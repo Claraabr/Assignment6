@@ -1,0 +1,16 @@
+{
+  "name": "tasks-api",
+  "version": "1.0.0",
+  "description": "Assignment 6 - REST API for tasks with Express and MongoDB",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "dev": "node --watch server.js",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "express": "^5.1.0",
+    "mongoose": "^8.9.0"
+  }
+}
