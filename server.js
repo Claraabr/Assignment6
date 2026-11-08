@@ -7,8 +7,6 @@ const dbUri = process.env.MONGODB_URI;
 const port = Number(process.env.PORT) || 3000;
 const app = express();
 
-// ---------- middleware ----------
-
 function logger(req, res, next) {
   const time = new Date().toLocaleTimeString();
   console.log(`${time} ${req.method} ${req.path}`);
@@ -18,7 +16,7 @@ function logger(req, res, next) {
 app.use(logger);
 app.use(express.json());
 
-// POST and PUT need a real title
+// used on POST and PUT
 function requireTitle(req, res, next) {
   const { title } = req.body ?? {};
   if (typeof title !== 'string' || !title.trim()) {
@@ -27,7 +25,7 @@ function requireTitle(req, res, next) {
   next();
 }
 
-// any route with :id checks the id first (400 = bad id, 404 = no such task)
+// used on every route with :id
 function checkId(req, res, next) {
   if (!mongoose.isValidObjectId(req.params.id)) {
     return res.status(400).json({ error: 'Invalid id' });
@@ -35,28 +33,10 @@ function checkId(req, res, next) {
   next();
 }
 
-// schema errors are the client's fault (400), anything else is ours (500)
-function sendError(res, err) {
-  if (err.name === 'ValidationError') {
-    const messages = Object.values(err.errors).map((e) =>
-      e.name === 'CastError' ? `${e.path} has the wrong type` : e.message
-    );
-    return res.status(400).json({ error: messages.join(', ') });
-  }
-  if (err.name === 'CastError') {
-    return res.status(400).json({ error: `${err.path} has the wrong type` });
-  }
-  console.error(err);
-  res.status(500).json({ error: 'Something went wrong on the server' });
-}
-
-// ---------- routes ----------
-
-// list all tasks, newest first. Optional filter: ?done=true or ?done=false
+// ?done=true or ?done=false to filter
 app.get('/api/tasks', async (req, res) => {
   const { done } = req.query;
   const filter = {};
-
   if (done !== undefined) {
     if (done !== 'true' && done !== 'false') {
       return res.status(400).json({ error: 'done must be true or false' });
@@ -68,7 +48,7 @@ app.get('/api/tasks', async (req, res) => {
     const tasks = await Task.find(filter).sort({ createdAt: -1 });
     res.json(tasks);
   } catch (err) {
-    sendError(res, err);
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
@@ -78,22 +58,22 @@ app.get('/api/tasks/:id', checkId, async (req, res) => {
     if (!task) return res.status(404).json({ error: 'Task not found' });
     res.json(task);
   } catch (err) {
-    sendError(res, err);
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
 app.post('/api/tasks', requireTitle, async (req, res) => {
-  // only take the fields we know; _id and timestamps are set by the server
+  // the server sets _id, createdAt and updatedAt, not the client
   const { title, description, done, tags } = req.body;
   try {
     const task = await Task.create({ title, description, done, tags });
     res.status(201).json(task);
   } catch (err) {
-    sendError(res, err);
+    res.status(400).json({ error: err.message });
   }
 });
 
-// PUT replaces the whole task: fields you leave out go back to their defaults
+// PUT replaces everything, so missing fields go back to their default
 app.put('/api/tasks/:id', checkId, requireTitle, async (req, res) => {
   const { title, description = '', done = false, tags = [] } = req.body;
   try {
@@ -105,11 +85,11 @@ app.put('/api/tasks/:id', checkId, requireTitle, async (req, res) => {
     if (!task) return res.status(404).json({ error: 'Task not found' });
     res.json(task);
   } catch (err) {
-    sendError(res, err);
+    res.status(400).json({ error: err.message });
   }
 });
 
-// PATCH changes only the fields you send
+// PATCH only changes the fields that are sent
 app.patch('/api/tasks/:id', checkId, async (req, res) => {
   const { title, description, done, tags } = req.body ?? {};
   const changes = {};
@@ -119,9 +99,7 @@ app.patch('/api/tasks/:id', checkId, async (req, res) => {
   if (tags !== undefined) changes.tags = tags;
 
   if (Object.keys(changes).length === 0) {
-    return res
-      .status(400)
-      .json({ error: 'Nothing to update: send title, description, done or tags' });
+    return res.status(400).json({ error: 'Nothing to update' });
   }
 
   try {
@@ -132,7 +110,7 @@ app.patch('/api/tasks/:id', checkId, async (req, res) => {
     if (!task) return res.status(404).json({ error: 'Task not found' });
     res.json(task);
   } catch (err) {
-    sendError(res, err);
+    res.status(400).json({ error: err.message });
   }
 });
 
@@ -142,30 +120,22 @@ app.delete('/api/tasks/:id', checkId, async (req, res) => {
     if (!task) return res.status(404).json({ error: 'Task not found' });
     res.sendStatus(204);
   } catch (err) {
-    sendError(res, err);
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
-// nothing matched
 app.use((req, res) => {
-  res.status(404).json({ error: 'Route not found' });
+  res.status(404).json({ error: 'Not found' });
 });
 
-// errors thrown before a route runs, e.g. a body that isn't valid JSON
+// express.json() sends an HTML page when the body is broken JSON,
+// this sends a JSON error instead
 app.use((err, req, res, next) => {
   if (err.type === 'entity.parse.failed') {
-    return res.status(400).json({ error: 'Request body is not valid JSON' });
+    return res.status(400).json({ error: 'Invalid JSON in request body' });
   }
-  console.error(err);
-  res.status(500).json({ error: 'Something went wrong on the server' });
+  res.status(500).json({ error: 'Server error' });
 });
-
-// ---------- start: connect first, then listen ----------
-
-if (!dbUri) {
-  console.error('MONGODB_URI is missing. Copy .env.example to .env and fill it in.');
-  process.exit(1);
-}
 
 try {
   await mongoose.connect(dbUri);

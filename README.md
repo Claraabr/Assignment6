@@ -73,7 +73,7 @@ A task looks like this:
 | Field | Type | Rules |
 | --- | --- | --- |
 | `title` | string | required, trimmed, 120 characters max |
-| `description` | string | optional, defaults to `""`, 1000 characters max |
+| `description` | string | optional, defaults to `""` |
 | `done` | boolean | optional, defaults to `false` |
 | `tags` | array of strings | optional, defaults to `[]` |
 
@@ -92,7 +92,7 @@ Base URL: `http://localhost:3000`
 | PATCH | `/api/tasks/:id` | Change some fields of a task | 200 | 400, 404 |
 | DELETE | `/api/tasks/:id` | Delete a task | 204 | 400, 404 |
 
-Every error comes back as JSON with an `error` message, for example `{ "error": "Task not found" }`. A 500 means something went wrong on the server side (the database is down, for example) and is answered with `{ "error": "Something went wrong on the server" }`.
+Every error comes back as JSON with an `error` message, for example `{ "error": "Task not found" }`. A 500 means something went wrong on the server side (the database is down, for example) and is answered with `{ "error": "Server error" }`.
 
 ### GET /api/tasks
 
@@ -174,16 +174,12 @@ Response `400` when the title is missing or blank:
 { "error": "title is required" }
 ```
 
-Response `400` when the title is too long:
-
-```json
-{ "error": "title must be 120 characters or less" }
-```
+Response `400` when the title is longer than 120 characters or a field has the wrong type (`"done": "banana"` for example). The `error` is the validation message from Mongoose, which names the field that failed.
 
 Response `400` when the body isn't valid JSON:
 
 ```json
-{ "error": "Request body is not valid JSON" }
+{ "error": "Invalid JSON in request body" }
 ```
 
 ### PUT /api/tasks/:id
@@ -243,20 +239,10 @@ Response `200`: the updated task, with `done: true` and everything else unchange
 Response `400` when the body has none of the four fields:
 
 ```json
-{ "error": "Nothing to update: send title, description, done or tags" }
+{ "error": "Nothing to update" }
 ```
 
-Response `400` when a value breaks a rule, for example `{"title": ""}`:
-
-```json
-{ "error": "title is required" }
-```
-
-or `{"done": "banana"}`:
-
-```json
-{ "error": "done has the wrong type" }
-```
+Response `400` when a value breaks a rule, for example `{"title": ""}` or `{"done": "banana"}`. The `error` is the Mongoose validation message.
 
 Response `404` if the task doesn't exist.
 
@@ -279,7 +265,7 @@ Running the same command a second time gives `404`:
 Anything else, like `GET /api/nothing-here`, returns `404`:
 
 ```json
-{ "error": "Route not found" }
+{ "error": "Not found" }
 ```
 
 ## Testing with Postman
@@ -291,6 +277,8 @@ The collection is in `postman/tasks-api.postman_collection.json`.
 3. Open the collection, click Run, and run all the requests in order.
 
 There are 24 requests: every route, each one on the success case and on its error cases (missing title, invalid id, missing task, malformed JSON, and so on). Each request has tests on the status code. The first request saves the id of the task it creates in the `{{taskId}}` variable, so the GET, PUT, PATCH and DELETE requests after it use that task. If the server runs on another port, change the `baseUrl` variable of the collection.
+
+A screenshot of a full run (47 tests, all passing) is in the `postman` folder.
 
 ## Project structure
 
